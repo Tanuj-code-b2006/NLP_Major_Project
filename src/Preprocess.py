@@ -119,7 +119,7 @@ def main(text_column='text', target_column='target'):
         os.makedirs(data_path, exist_ok=True)
         train_data.to_csv(os.path.join(data_path, "train_preprocessed.csv"), index=False)
         test_data.to_csv(os.path.join(data_path, "test_preprocessed.csv"), index=False)
-        logger.debug("Saved preprocessed data to data/processed_data directory.")
+        logger.debug("Saved preprocessed data to data/interim_data directory.")
 
     except FileNotFoundError as e:
         logger.error(f"File not found error: {e}")
@@ -134,4 +134,3 @@ def main(text_column='text', target_column='target'):
 
 if __name__ == "__main__":
     main()
-
