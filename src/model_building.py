@@ -1,137 +1,152 @@
+import logging
 import os
+import pickle
+from typing import Any
+
 import numpy as np
 import pandas as pd
-import pickle
-import logging
 from sklearn.ensemble import RandomForestClassifier
-import yaml
+from sklearn.metrics import accuracy_score, classification_report
 
-# Ensure the "logs" directory exists
-log_dir = 'logs'
-os.makedirs(log_dir, exist_ok=True)
 
-# logging configuration
-logger = logging.getLogger('model_building')
-logger.setLevel('DEBUG')
+LOG_DIR = "logs"
+MODEL_PATH = os.path.join("models", "model.pkl")
+TRAIN_DATA_PATH = os.path.join("data", "processed_data", "train_tfidf.csv")
+TEST_DATA_PATH = os.path.join("data", "processed_data", "test_tfidf.csv")
+TARGET_COLUMN = "target"
 
-console_handler = logging.StreamHandler()
-console_handler.setLevel('DEBUG')
+os.makedirs(LOG_DIR, exist_ok=True)
 
-log_file_path = os.path.join(log_dir, 'model_building.log')
-file_handler = logging.FileHandler(log_file_path)
-file_handler.setLevel('DEBUG')
+logger = logging.getLogger("model_building")
+logger.setLevel(logging.DEBUG)
 
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-console_handler.setFormatter(formatter)
-file_handler.setFormatter(formatter)
+if not logger.handlers:
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
 
-logger.addHandler(console_handler)
-logger.addHandler(file_handler)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)
+    console_handler.setFormatter(formatter)
 
-def load_params(params_path: str) -> dict:
-    """Load parameters from a YAML file."""
-    try:
-        with open(params_path, 'r') as file:
-            params = yaml.safe_load(file)
-        logger.debug('Parameters retrieved from %s', params_path)
-        return params
-    except FileNotFoundError:
-        logger.error('File not found: %s', params_path)
-        raise
-    except yaml.YAMLError as e:
-        logger.error('YAML error: %s', e)
-        raise
-    except Exception as e:
-        logger.error('Unexpected error: %s', e)
-        raise
+    file_handler = logging.FileHandler(
+        os.path.join(LOG_DIR, "model_building.log")
+    )
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+
+    logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
 
 
 def load_data(file_path: str) -> pd.DataFrame:
-    """
-    Load data from a CSV file.
-    
-    :param file_path: Path to the CSV file
-    :return: Loaded DataFrame
-    """
+    """Load a processed dataset from a CSV file."""
     try:
-        df = pd.read_csv(file_path)
-        logger.debug('Data loaded from %s with shape %s', file_path, df.shape)
-        return df
-    except pd.errors.ParserError as e:
-        logger.error('Failed to parse the CSV file: %s', e)
-        raise
-    except FileNotFoundError as e:
-        logger.error('File not found: %s', e)
-        raise
-    except Exception as e:
-        logger.error('Unexpected error occurred while loading the data: %s', e)
+        data = pd.read_csv(file_path)
+        if data.empty:
+            raise ValueError(f"Dataset is empty: {file_path}")
+        logger.info("Loaded %s with shape %s", file_path, data.shape)
+        return data
+    except Exception:
+        logger.exception("Failed to load dataset from %s", file_path)
         raise
 
-def train_model(X_train: np.ndarray, y_train: np.ndarray, params: dict) -> RandomForestClassifier:
-    """
-    Train the RandomForest model.
-    
-    :param X_train: Training features
-    :param y_train: Training labels
-    :param params: Dictionary of hyperparameters
-    :return: Trained RandomForestClassifier
-    """
+
+def train_model(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    params: dict[str, Any] | None = None,
+) -> RandomForestClassifier:
+    """Train a random forest classifier using the supplied training data."""
+    if X_train.shape[0] == 0:
+        raise ValueError("Training data must contain at least one sample.")
+    if X_train.shape[0] != y_train.shape[0]:
+        raise ValueError("Training features and labels must have the same number of samples.")
+
+    model_params = params or {}
+    model = RandomForestClassifier(
+        n_estimators=model_params.get("n_estimators", 100),
+        random_state=model_params.get("random_state", 42),
+        n_jobs=model_params.get("n_jobs", -1),
+    )
+
+    logger.info("Training RandomForestClassifier on %d samples", X_train.shape[0])
+    model.fit(X_train, y_train)
+    logger.info("Model training completed")
+    return model
+
+
+def evaluate_model(
+    model: RandomForestClassifier,
+    X_test: np.ndarray,
+    y_test: np.ndarray,
+) -> float:
+    """Evaluate the trained model and log its test-set metrics."""
+    if X_test.shape[0] == 0:
+        raise ValueError("Test data must contain at least one sample.")
+    if X_test.shape[0] != y_test.shape[0]:
+        raise ValueError("Test features and labels must have the same number of samples.")
+
+    predictions = model.predict(X_test)
+    accuracy = accuracy_score(y_test, predictions)
+    logger.info("Test accuracy: %.4f", accuracy)
+    logger.info(
+        "Classification report:\n%s",
+        classification_report(y_test, predictions, zero_division=0),
+    )
+    return accuracy
+
+
+def save_model(model: RandomForestClassifier, file_path: str) -> None:
+    """Serialize the trained model to disk."""
+    directory = os.path.dirname(file_path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+
     try:
-        if X_train.shape[0] != y_train.shape[0]:
-            raise ValueError("The number of samples in X_train and y_train must be the same.")
-        
-        logger.debug('Initializing RandomForest model with parameters: %s', params)
-        clf = RandomForestClassifier(n_estimators=params['n_estimators'], random_state=params['random_state'])
-        
-        logger.debug('Model training started with %d samples', X_train.shape[0])
-        clf.fit(X_train, y_train)
-        logger.debug('Model training completed')
-        
-        return clf
-    except ValueError as e:
-        logger.error('ValueError during model training: %s', e)
-        raise
-    except Exception as e:
-        logger.error('Error during model training: %s', e)
+        with open(file_path, "wb") as model_file:
+            pickle.dump(model, model_file)
+        logger.info("Model saved to %s", file_path)
+    except Exception:
+        logger.exception("Failed to save model to %s", file_path)
         raise
 
 
-def save_model(model, file_path: str) -> None:
-    """
-    Save the trained model to a file.
-    
-    :param model: Trained model object
-    :param file_path: Path to save the model file
-    """
+def _split_features_and_target(
+    data: pd.DataFrame,
+    dataset_name: str,
+) -> tuple[pd.DataFrame, pd.Series]:
+    if TARGET_COLUMN not in data.columns:
+        raise ValueError(f"{dataset_name} dataset is missing '{TARGET_COLUMN}'.")
+
+    features = data.drop(columns=[TARGET_COLUMN])
+    if features.empty or features.shape[1] == 0:
+        raise ValueError(f"{dataset_name} dataset has no feature columns.")
+    return features, data[TARGET_COLUMN]
+
+
+def main() -> None:
+    """Train, evaluate, and persist the spam-classification model."""
     try:
-        # Ensure the directory exists
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        
-        with open(file_path, 'wb') as file:
-            pickle.dump(model, file)
-        logger.debug('Model saved to %s', file_path)
-    except FileNotFoundError as e:
-        logger.error('File path not found: %s', e)
+        params = {"n_estimators": 25, "random_state": 2}
+        train_data = load_data(TRAIN_DATA_PATH)
+        test_data = load_data(TEST_DATA_PATH)
+
+        X_train, y_train = _split_features_and_target(train_data, "Training")
+        X_test, y_test = _split_features_and_target(test_data, "Test")
+
+        if not X_train.columns.equals(X_test.columns):
+            raise ValueError(
+                "Training and test datasets must have identical feature columns."
+            )
+
+        model = train_model(X_train.to_numpy(), y_train.to_numpy(), params)
+        evaluate_model(model, X_test.to_numpy(), y_test.to_numpy())
+        save_model(model, MODEL_PATH)
+    except Exception:
+        logger.exception("Model-building pipeline failed")
         raise
-    except Exception as e:
-        logger.error('Error occurred while saving the model: %s', e)
-        raise
 
-def main():
-    try:
-        params = load_params('params.yaml')['model_building']
-        train_data = load_data('./data/processed/train_tfidf.csv')
-        X_train = train_data.iloc[:, :-1].values
-        y_train = train_data.iloc[:, -1].values
 
-        clf = train_model(X_train, y_train, params)
-        
-        model_save_path = 'models/model.pkl'
-        save_model(clf, model_save_path)
-
-    except Exception as e:
-        logger.error('Failed to complete the model building process: %s', e)
-        print(f"Error: {e}")
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -105,7 +105,6 @@ def main():
     try:
         data_path ="https://raw.githubusercontent.com/Tanuj-code-b2006/Datasets/refs/heads/main/spam.csv"
         test_size = 0.2
-
         df=load_data(data_url=data_path)
         final_df=preprocess_data(df)
         train_data, test_data = train_test_split(final_df, test_size=test_size, random_state=2)
