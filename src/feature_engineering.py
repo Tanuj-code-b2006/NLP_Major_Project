@@ -4,10 +4,6 @@ import logging
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-import logging
-
-from data_ingestion import save_data 
-
 logs_dir = "logs"
 os.makedirs(logs_dir, exist_ok=True)
 
@@ -59,11 +55,25 @@ def apply_tfidf(train_data:pd.DataFrame, test_data:pd.DataFrame, max_features:in
     """
     try:
         logger.debug("Starting TF-IDF vectorization.")
+        required_columns = {"text", "target"}
+        for dataset_name, dataset in (
+            ("training", train_data),
+            ("test", test_data),
+        ):
+            missing_columns = required_columns.difference(dataset.columns)
+            if missing_columns:
+                raise ValueError(
+                    f"{dataset_name} data is missing columns: "
+                    f"{', '.join(sorted(missing_columns))}"
+                )
+
         tfidf_vectorizer = TfidfVectorizer(max_features=max_features)
         
         
-        X_train=train_data['text']
-        X_test=test_data['text']
+        # Empty preprocessed messages are written as NaN by read_csv; treat
+        # them as documents with no terms so TF-IDF can still process them.
+        X_train=train_data['text'].fillna("").astype(str)
+        X_test=test_data['text'].fillna("").astype(str)
         y_train=train_data['target']
         y_test=test_data['target']
         X_train_tfidf = tfidf_vectorizer.fit_transform(X_train)
@@ -98,7 +108,7 @@ def save_data(df: pd.DataFrame, path: str) -> None:
 
 
 def main():
-    max_features = 500
+    max_features = 50
 
     try:
         train_data = load_data("data/interim_data/train_preprocessed.csv")

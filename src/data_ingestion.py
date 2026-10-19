@@ -57,6 +57,11 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
     """
     try:
         logger.debug("Starting data preprocessing.")
+
+        # Remove unused columns before dropping missing values; these columns
+        # are mostly empty in the SMS spam dataset.
+        df = df.drop(["Unnamed: 2", "Unnamed: 3", "Unnamed: 4"], axis=1)
+
         # Handle missing values
         df = df.dropna()  # Drop rows with missing values
         logger.debug("Missing values handled by dropping rows with NaN values.")
@@ -65,7 +70,6 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
         df = df.drop_duplicates()
         logger.debug("Duplicates handled by dropping duplicate rows.")
 
-        df.drop(["Unnamed: 2","Unnamed: 3","Unnamed: 4"], axis=1, inplace=True)  
         df.rename(columns={"v1": "target", "v2": "text"}, inplace=True)  # Rename columns
         logger.debug("Data preprocessing completed.")
         return df
