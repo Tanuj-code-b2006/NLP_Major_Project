@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 import logging
-
+import yaml
 from sklearn.model_selection import train_test_split 
 
 log_dir="logs"
@@ -22,6 +22,22 @@ file_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 logger.addHandler(file_handler)
 
+
+def load_params(params_path: str)->dict:
+    try:
+        with open (params_path,'r') as file:
+            params=yaml.safe_load(file)
+        logger.debug("Params recieved from %s",params_path)
+        return params
+    except FileNotFoundError as e:
+        logger.error("File not found at %s",params_path)
+        raise
+    except yaml.YAMLError as e:
+        logger.error("YAML error %s",e)
+        raise
+    except Exception as e:
+        logger.error("Unexpected Error %s",e)
+        raise
 def load_data(data_url:str)->pd.DataFrame:
     """
     Function to load data from a given URL and return it as a pandas DataFrame.
@@ -108,7 +124,11 @@ def main():
     """
     try:
         data_path ="https://raw.githubusercontent.com/Tanuj-code-b2006/Datasets/refs/heads/main/spam.csv"
-        test_size = 0.2
+        #test_size = 0.2
+        params=load_params(params_path="params.yaml")
+        test_size=params['data_ingestion']['test_size']
+
+
         df=load_data(data_url=data_path)
         final_df=preprocess_data(df)
         train_data, test_data = train_test_split(final_df, test_size=test_size, random_state=2)
